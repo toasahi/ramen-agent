@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useState, useEffect } from "react";
 import {
   AssistantRuntimeProvider,
   unstable_useRemoteThreadListRuntime as useRemoteThreadListRuntime,
@@ -12,6 +13,7 @@ import { up } from "up-fetch";
 import z from "zod";
 import { AssistantChatTransport, useAISDKRuntime } from "@assistant-ui/react-ai-sdk";
 import { useChat } from "@ai-sdk/react";
+import type { Message } from "ai";
 
 const upFetch = up(fetch,()=> ({
     baseUrl: "http://localhost:4111/api",
@@ -148,16 +150,64 @@ const threadListAdapter: RemoteThreadListAdapter = {
   },
 };
 
+// メッセージローダーコンポーネント: スレッドの会話履歴を取得
+async function loadThreadMessages(remoteId: string): Promise<Message[]> {
+  try {
+    const messages = await upFetch(`/memory/threads/${remoteId}/messages`, {
+      schema: z.array(z.object({
+        id: z.string(),
+        role: z.enum(['user', 'assistant', 'system', 'tool']),
+        content: z.union([z.string(), z.array(z.any())]),
+        createdAt: z.string().optional(),
+      })),
+      params: {
+        agentId: AGENT_ID,
+      },
+    });
+    
+    // Mastraのメッセージ形式からAI SDKの形式に変換
+    const formattedMessages: Message[] = messages.map((msg) => ({
+      id: msg.id,
+      role: msg.role,
+      content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
+    }));
+    
+    return formattedMessages;
+  } catch (error) {
+    console.error("Failed to load messages for thread:", remoteId, error);
+    // エラーが発生しても続行（新しいスレッドの場合など）
+    return [];
+  }
+}
+
 // RuntimeHookコンポーネント: 各スレッドのランタイムを作成
 function RuntimeHook() {
   const id = useAssistantState(({ threadListItem }) => threadListItem.id);
+  const remoteId = useAssistantState(({ threadListItem }) => threadListItem.remoteId);
+  const [initialMessages, setInitialMessages] = useState<Message[] | undefined>(undefined);
+  
+  // スレッドの会話履歴をロード（remoteIdが変わった時のみ）
+  useEffect(() => {
+    if (!remoteId) {
+      setInitialMessages([]);
+      return;
+    }
+    
+    loadThreadMessages(remoteId).then(setInitialMessages);
+  }, [remoteId]);
+  
   const transport = new AssistantChatTransport({
-    api: "http://localhost:4111/chat/ramenAgent"
+    api: "http://localhost:4111/chat/ramenAgent",
   });
   
   const chat = useChat({
     id,
+    body: {
+      threadId: remoteId || id,
+      resourceId: RESOURCE_ID,
+    },
     transport,
+    initialMessages,
   });
 
   const runtime = useAISDKRuntime(chat);
