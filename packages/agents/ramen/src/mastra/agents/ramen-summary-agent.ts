@@ -37,7 +37,7 @@ Google評価:
     model: bedrock('us.amazon.nova-micro-v1:0'),
     memory: new Memory({
         storage: new LibSQLStore({
-            url: 'file:../mastra.db', // path is relative to the .mastra/output directory
+            url: 'file:mastra.db',
         }),
     }),
 });

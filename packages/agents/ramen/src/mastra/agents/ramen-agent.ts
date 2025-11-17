@@ -50,7 +50,7 @@ Google評価:
     workflows: {ramenWorkflow},
     memory: new Memory({
         storage: new LibSQLStore({
-            url: 'file:../mastra.db', // path is relative to the .mastra/output directory
+            url: 'file:mastra.db',
         }),
     }),
 });

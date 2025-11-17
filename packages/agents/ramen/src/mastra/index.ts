@@ -38,7 +38,7 @@ export const mastra = new Mastra({
 
   storage: new LibSQLStore({
     // スレッド履歴を永続化するためにファイルに保存
-    url: ":memory:",
+    url: "file:mastra.db",
   }),
   logger: new PinoLogger({
     name: 'Mastra',
