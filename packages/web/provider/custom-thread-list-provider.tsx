@@ -13,7 +13,7 @@ import { up } from "up-fetch";
 import z from "zod";
 import { AssistantChatTransport, useAISDKRuntime } from "@assistant-ui/react-ai-sdk";
 import { useChat } from "@ai-sdk/react";
-import type { Message } from "ai";
+import type { CoreMessage } from "ai";
 
 const upFetch = up(fetch,()=> ({
     baseUrl: "http://localhost:4111/api",
@@ -151,26 +151,54 @@ const threadListAdapter: RemoteThreadListAdapter = {
 };
 
 // メッセージローダーコンポーネント: スレッドの会話履歴を取得
-async function loadThreadMessages(remoteId: string): Promise<Message[]> {
+async function loadThreadMessages(remoteId: string): Promise<CoreMessage[]> {
   try {
-    const messages = await upFetch(`/memory/threads/${remoteId}/messages`, {
-      schema: z.array(z.object({
-        id: z.string(),
-        role: z.enum(['user', 'assistant', 'system', 'tool']),
-        content: z.union([z.string(), z.array(z.any())]),
-        createdAt: z.string().optional(),
-      })),
+    const response = await upFetch(`/memory/threads/${remoteId}/messages`, {
+      schema: z.object({
+        messages: z.array(z.object({
+          id: z.string(),
+          role: z.enum(['user', 'assistant', 'system', 'tool']),
+          content: z.union([
+            z.string(),
+            z.array(z.any()),
+            z.object({
+              type: z.string(),
+              text: z.string().optional(),
+            }).passthrough(),
+          ]),
+          createdAt: z.string().optional(),
+        })),
+        uiMessages: z.array(z.any()).optional(),
+      }),
       params: {
         agentId: AGENT_ID,
       },
     });
     
     // Mastraのメッセージ形式からAI SDKの形式に変換
-    const formattedMessages: Message[] = messages.map((msg) => ({
-      id: msg.id,
-      role: msg.role,
-      content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
-    }));
+    const formattedMessages: CoreMessage[] = response.messages.map((msg) => {
+      let content = '';
+      if (typeof msg.content === 'string') {
+        content = msg.content;
+      } else if (Array.isArray(msg.content)) {
+        // 配列の場合は text フィールドを持つ最初の要素を探す
+        const textContent = msg.content.find((c: any) => c.type === 'text' || typeof c === 'string');
+        content = typeof textContent === 'string' ? textContent : (textContent?.text || JSON.stringify(msg.content));
+      } else if (typeof msg.content === 'object' && msg.content !== null) {
+        content = (msg.content as any).text || JSON.stringify(msg.content);
+      }
+      
+      // CoreMessageの正しい形式に変換
+      if (msg.role === 'user') {
+        return { role: 'user', content } as CoreMessage;
+      } else if (msg.role === 'assistant') {
+        return { role: 'assistant', content } as CoreMessage;
+      } else if (msg.role === 'system') {
+        return { role: 'system', content } as CoreMessage;
+      } else {
+        return { role: 'tool', content: [], toolCallId: msg.id } as CoreMessage;
+      }
+    });
     
     return formattedMessages;
   } catch (error) {
@@ -184,30 +212,36 @@ async function loadThreadMessages(remoteId: string): Promise<Message[]> {
 function RuntimeHook() {
   const id = useAssistantState(({ threadListItem }) => threadListItem.id);
   const remoteId = useAssistantState(({ threadListItem }) => threadListItem.remoteId);
-  const [initialMessages, setInitialMessages] = useState<Message[] | undefined>(undefined);
+  const [messages, setMessages] = useState<CoreMessage[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   
   // スレッドの会話履歴をロード（remoteIdが変わった時のみ）
   useEffect(() => {
     if (!remoteId) {
-      setInitialMessages([]);
+      setMessages([]);
+      setIsLoading(false);
       return;
     }
     
-    loadThreadMessages(remoteId).then(setInitialMessages);
+    setIsLoading(true);
+    loadThreadMessages(remoteId).then((msgs) => {
+      setMessages(msgs);
+      setIsLoading(false);
+    });
   }, [remoteId]);
   
   const transport = new AssistantChatTransport({
     api: "http://localhost:4111/chat/ramenAgent",
-  });
-  
-  const chat = useChat({
-    id,
     body: {
       threadId: remoteId || id,
       resourceId: RESOURCE_ID,
     },
+  });
+  
+  const chat = useChat({
+    id: remoteId || id,
     transport,
-    initialMessages,
+    ...(messages.length > 0 && !isLoading ? { initialMessages: messages as any } : {}),
   });
 
   const runtime = useAISDKRuntime(chat);
