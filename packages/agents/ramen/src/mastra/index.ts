@@ -12,6 +12,12 @@ export const mastra = new Mastra({
   workflows: { ramenWorkflow },
   agents: { ramenAgent, ramenSummaryAgent },
   server: {
+    middleware: [
+      async (c, next) => {
+        console.log(`${c.req.method} ${c.req.url}`);
+        await next();
+      },
+    ],
     apiRoutes: [
       chatRoute({
         path: "/chat/:agentId",
@@ -35,7 +41,6 @@ export const mastra = new Mastra({
       },
     },
   },
-
   storage: new LibSQLStore({
     // スレッド履歴を永続化するためにファイルに保存
     url: ":memory:",

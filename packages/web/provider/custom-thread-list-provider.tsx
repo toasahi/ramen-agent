@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   AssistantRuntimeProvider,
   unstable_useRemoteThreadListRuntime as useRemoteThreadListRuntime,
@@ -12,9 +12,11 @@ import { up } from "up-fetch";
 import z from "zod";
 import { AssistantChatTransport, useAISDKRuntime } from "@assistant-ui/react-ai-sdk";
 import { useChat } from "@ai-sdk/react";
+import { v4 as uuidv4 } from "uuid";
 
+// Next.js API Route経由でMastraを呼び出す
 const upFetch = up(fetch,()=> ({
-    baseUrl: "http://localhost:4111/api",
+    baseUrl: "/api",
     retry: {
         attempts: 3,
         delay: 1000,
@@ -151,8 +153,32 @@ const threadListAdapter: RemoteThreadListAdapter = {
 // RuntimeHookコンポーネント: 各スレッドのランタイムを作成
 function RuntimeHook() {
   const id = useAssistantState(({ threadListItem }) => threadListItem.id);
+
+  const [threadId, setThreadId] = useState(uuidv4());
+
+  if(!id && !threadId){
+    setThreadId(uuidv4());
+  }
+
   const transport = new AssistantChatTransport({
-    api: "http://localhost:4111/chat/ramenAgent"
+    api: "/api/chat", // Next.js API Route経由
+    body: {
+      resourceId: RESOURCE_ID,
+      threadId: threadId,
+    },
+    prepareSendMessagesRequest({messages,body}) {
+      // idをUUIDに変換して送信する処理
+      const changedMessagesId = messages.map((message) => ({
+        ...message,
+        messageId: uuidv4(),
+      }))
+      return {
+        body: {
+          ...body,
+          messages: changedMessagesId,
+        }
+      };
+    },
   });
   
   const chat = useChat({

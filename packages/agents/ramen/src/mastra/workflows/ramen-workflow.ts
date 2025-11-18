@@ -11,7 +11,7 @@ const searchRamenShopStep = createStep({
     city: z.string().optional().describe('（例：梅田、本町）'),
     name: z.string().optional().describe('ラーメン店の名前（例：一風堂,人類みな麺類）'),
   }),
-  outputSchema: placesResponseSchema,
+  outputSchema: z.string().describe('Token-Oriented Object Notation is a compact'),
   execute: async ({ inputData, runtimeContext }) => {
     const { prefecture, city, name } = inputData;
 
@@ -29,14 +29,14 @@ const searchRamenShopStep = createStep({
 
 const summarizeRamenShopStep = createStep({
   id: 'summarize-ramen-shop-step',
-  inputSchema: placesResponseSchema,
+  inputSchema: z.string().describe('Token-Oriented Object Notation is a compact'),
   outputSchema: z.string().describe('要約されたラーメン店の情報'),
   execute: async ({ inputData, mastra }) => {
     const ramenSummaryAgent = mastra.getAgent('ramenSummaryAgent');
     if(!ramenSummaryAgent){
       throw new Error('ramenSummaryAgentが見つかりませんでした。');
     }
-    const response = await ramenSummaryAgent.generate(`${JSON.stringify(inputData)}`);
+    const response = await ramenSummaryAgent.generate(`${inputData}`);
 
     console.log(response.text);
     

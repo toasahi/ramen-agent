@@ -2,6 +2,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { upfetch } from '../../lib/up-fetch';
 import { isResponseError, isValidationError } from 'up-fetch';
+import {encode} from '@toon-format/toon';
 
 // Google Places API のスキーマ定義
 const dateSchema = z.object({
@@ -96,13 +97,13 @@ export const ramenTool = createTool({
         city: z.string().optional().describe('（例：梅田、本町、品川）'),
         name: z.string().optional().describe('Name of the ramen shop to search for (e.g., "一風堂、人類みな麺類")'),
     }),
-    outputSchema: placesResponseSchema,
+    outputSchema: z.string().describe('JSON Encoded Toon'),
     execute: async ({ context }) => {
         return await getRamenRecommendations(context.prefecture, context.city, context.name);
     },
 });
 
-const getRamenRecommendations = async (prefecture: string, city?: string, name?: string): Promise<PlacesResponse> => {
+const getRamenRecommendations = async (prefecture: string, city?: string, name?: string) => {
 
     const googlePlaceSearchTextURL = 'https://places.googleapis.com/v1/places:searchText'
 
@@ -119,7 +120,7 @@ const getRamenRecommendations = async (prefecture: string, city?: string, name?:
     } as const satisfies TextSearchParameter;
 
     try {
-        return upfetch(googlePlaceSearchTextURL, {
+        const ramenShops = await upfetch(googlePlaceSearchTextURL, {
             schema: placesResponseSchema,
             method: 'POST',
             headers: {
@@ -139,6 +140,9 @@ const getRamenRecommendations = async (prefecture: string, city?: string, name?:
                 delay: (ctx) => ctx.attempt ** 2 ** 1000,
             }
         });
+
+        return encode(ramenShops)
+
     } catch (error) {
         if (isResponseError(error)) {
             console.error(error.status);
@@ -147,8 +151,6 @@ const getRamenRecommendations = async (prefecture: string, city?: string, name?:
         if (isValidationError(error)) {
             console.error(error.issues)
         }
-        return {
-            places: []
-        };
+        return "申し訳ありませんが、現在ラーメン店の情報を取得できません。後ほど再度お試しください。";
     }
 };
