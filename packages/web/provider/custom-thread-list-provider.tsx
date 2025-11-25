@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import {
   AssistantRuntimeProvider,
   unstable_useRemoteThreadListRuntime as useRemoteThreadListRuntime,
@@ -16,7 +16,7 @@ import { v4 as uuidv4 } from "uuid";
 
 // Next.js API Route経由でMastraを呼び出す
 const upFetch = up(fetch,()=> ({
-    baseUrl: "/api",
+    baseUrl: "http://localhost:4111/api",
     retry: {
         attempts: 3,
         delay: 1000,
@@ -43,7 +43,8 @@ const threadListAdapter: RemoteThreadListAdapter = {
           agentId: AGENT_ID,
           orderBy: "updatedAt",
           sortDirection: "DESC"
-        }
+        },
+        credentials: "include",
       });
       
       return {
@@ -75,6 +76,7 @@ const threadListAdapter: RemoteThreadListAdapter = {
         title: "新しい会話",
         metadata: { archived: false },
       },
+      credentials: "include",
     });
     
     return { remoteId: result.id, externalId: result.id };
@@ -85,7 +87,9 @@ const threadListAdapter: RemoteThreadListAdapter = {
       method: "PATCH",
       params: { agentId: AGENT_ID },
       body: { title },
+      credentials: "include",
     });
+
   },
   
   async archive(remoteId) {
@@ -93,6 +97,7 @@ const threadListAdapter: RemoteThreadListAdapter = {
       method: "PATCH",
       params: { agentId: AGENT_ID },
       body: { metadata: { archived: true } },
+      credentials: "include",
     });
   },
   
@@ -101,6 +106,7 @@ const threadListAdapter: RemoteThreadListAdapter = {
       method: "PATCH",
       params: { agentId: AGENT_ID },
       body: { metadata: { archived: false } },
+      credentials: "include",
     });
   },
   
@@ -108,6 +114,7 @@ const threadListAdapter: RemoteThreadListAdapter = {
     await upFetch(`/memory/threads/${remoteId}`, {
       method: "DELETE",
       params: { agentId: AGENT_ID },
+      credentials: "include",
     });
   },
   
@@ -119,6 +126,7 @@ const threadListAdapter: RemoteThreadListAdapter = {
         metadata: z.object({ archived: z.boolean().optional() }).optional().nullable(),
       }),
       params: { agentId: AGENT_ID },
+      credentials: "include",
     });
     
     return {
@@ -142,6 +150,7 @@ const threadListAdapter: RemoteThreadListAdapter = {
         method: "PATCH",
         params: { agentId: AGENT_ID },
         body: { title },
+        credentials: "include",
       });
       
       controller.appendText(title);
@@ -154,18 +163,16 @@ const threadListAdapter: RemoteThreadListAdapter = {
 function RuntimeHook() {
   const id = useAssistantState(({ threadListItem }) => threadListItem.id);
 
-  const [threadId, setThreadId] = useState(uuidv4());
-
-  if(!id && !threadId){
-    setThreadId(uuidv4());
-  }
+  const [threadId] = useState(() => id || uuidv4());
+  const effectiveThreadId = id || threadId;
 
   const transport = new AssistantChatTransport({
-    api: "/api/chat", // Next.js API Route経由
+    api: `http://localhost:4111/chat/${RESOURCE_ID}`, 
     body: {
       resourceId: RESOURCE_ID,
-      threadId: threadId,
+      threadId: effectiveThreadId,
     },
+    credentials: "include",
     prepareSendMessagesRequest({messages,body}) {
       // idをUUIDに変換して送信する処理
       const changedMessagesId = messages.map((message) => ({
@@ -182,9 +189,39 @@ function RuntimeHook() {
   });
   
   const chat = useChat({
-    id,
+    id: effectiveThreadId,
     transport,
   });
+
+  useEffect(() => {
+    if (!id) return;
+
+    // スレッドIDが変更されたときにメッセージ履歴を取得して表示する
+    // assistant-uiはデフォルトでは履歴の自動取得を行わないため、ここで手動で取得して設定する
+    const fetchMessages = async () => {
+      try {
+        const data = await upFetch(`/memory/threads/${id}/messages`, {
+          schema: z.object({
+            uiMessages: z.array(z.any()),
+          }),
+          params: { agentId: AGENT_ID },
+          credentials: "include",
+        });
+        if (data?.uiMessages) {
+          chat.setMessages(data.uiMessages);
+        }
+      } catch (error) {
+        // 404は新規スレッドの場合などで発生する可能性があるため、エラーログを出さない
+        // @ts-expect-error error is unknown
+        if (error?.status === 404 || error?.response?.status === 404) {
+          return;
+        }
+        console.error("Failed to fetch messages:", error);
+      }
+    };
+
+    fetchMessages();
+  }, [id, chat]);
 
   const runtime = useAISDKRuntime(chat);
 

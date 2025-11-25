@@ -33,13 +33,13 @@ const summarizeRamenShopStep = createStep({
   outputSchema: z.string().describe('要約されたラーメン店の情報'),
   execute: async ({ inputData, mastra }) => {
     const ramenSummaryAgent = mastra.getAgent('ramenSummaryAgent');
-    if(!ramenSummaryAgent){
+    if (!ramenSummaryAgent) {
       throw new Error('ramenSummaryAgentが見つかりませんでした。');
     }
     const response = await ramenSummaryAgent.generate(`${inputData}`);
 
     console.log(response.text);
-    
+
     return response.text;
   }
 });

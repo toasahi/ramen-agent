@@ -2,7 +2,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { upfetch } from '../../lib/up-fetch';
 import { isResponseError, isValidationError } from 'up-fetch';
-import {encode} from '@toon-format/toon';
+import { encode } from '@toon-format/toon';
 
 // Google Places API のスキーマ定義
 const dateSchema = z.object({
@@ -40,17 +40,10 @@ const locationSchema = z.object({
     longitude: z.number(),
 });
 
-const authorAttributionSchema = z.object({
-    displayName: z.string(),
-    uri: z.string().url(),
-    photoUri: z.string().url(),
-});
-
 const photoSchema = z.object({
     name: z.string(),
     widthPx: z.number(),
     heightPx: z.number(),
-    authorAttributions: z.array(authorAttributionSchema),
     flagContentUri: z.string().url(),
     googleMapsUri: z.string().url(),
 });
@@ -65,11 +58,11 @@ const placeSchema = z.object({
     userRatingCount: z.number(),
     displayName: displayNameSchema,
     currentOpeningHours: openingHoursSchema.optional(),
-    photos: z.array(photoSchema).optional(),
+    // photos: z.array(photoSchema).optional(),
 });
 
 const placesResponseSchema = z.object({
-    places: z.array(placeSchema,{message:"ラーメン店の情報が見つかりませんでした。"}).describe('Google Map Places API response for ramen restaurant search'),
+    places: z.array(placeSchema, { message: "ラーメン店の情報が見つかりませんでした。" }).describe('Google Map Places API response for ramen restaurant search'),
 });
 
 type PlacesResponse = z.infer<typeof placesResponseSchema>;

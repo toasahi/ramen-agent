@@ -7,6 +7,8 @@ import { ramenAgent } from './agents/ramen-agent';
 import { ramenSummaryAgent } from './agents/ramen-summary-agent';
 import { ramenWorkflow } from './workflows/ramen-workflow';
 import { chatRoute } from '@mastra/ai-sdk';
+import { upfetch } from '../lib/up-fetch';
+
 
 export const mastra = new Mastra({
   workflows: { ramenWorkflow },
@@ -14,10 +16,32 @@ export const mastra = new Mastra({
   server: {
     middleware: [
       async (c, next) => {
+        const cookieHeader = c.req.header("cookie");
+        const session = await upfetch("http://localhost:3000/api/auth/get-session", {
+          method: "GET",
+          headers: {
+            cookie: cookieHeader ?? "",
+          },
+          retry: {
+            attempts: 3,
+          }
+        });
+
+        console.log("Session fetched in Mastra middleware:", session);
+
+        await next();
+      },
+      async (c, next) => {
         console.log(`${c.req.method} ${c.req.url}`);
         await next();
       },
     ],
+    cors: {
+      origin: ['http://localhost:3000'],
+      allowMethods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+      allowHeaders: ["Content-Type", "Authorization"],
+      credentials: true,
+    },
     apiRoutes: [
       chatRoute({
         path: "/chat/:agentId",
@@ -36,6 +60,8 @@ export const mastra = new Mastra({
             options: {
               environment: process.env.NODE_ENV ?? "development",
             },
+            logLevel: "info",
+            realtime: true,
           }),
         ],
       },
