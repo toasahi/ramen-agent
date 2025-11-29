@@ -234,7 +234,7 @@ function RuntimeHook() {
     };
 
     fetchMessages();
-  }, [id]); // 依存配列からchatを削除し、idのみに依存
+  }, [id]); 
 
   const runtime = useAISDKRuntime(chat);
 
