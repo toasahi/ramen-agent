@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import {
   AssistantRuntimeProvider,
   unstable_useRemoteThreadListRuntime as useRemoteThreadListRuntime,
@@ -166,6 +166,11 @@ function RuntimeHook() {
   const [threadId] = useState(() => id || uuidv4());
   const effectiveThreadId = id || threadId;
 
+  // スレッドIDの変更を追跡するRef
+  // これにより、会話中（chatの変更時）ではなく、スレッド切り替え時のみ履歴を取得する
+  const prevIdRef = useRef<string | null>(null);
+  const chatRef = useRef<ReturnType<typeof useChat> | null>(null);
+
   const transport = new AssistantChatTransport({
     api: `http://localhost:4111/chat/${RESOURCE_ID}`, 
     body: {
@@ -193,11 +198,19 @@ function RuntimeHook() {
     transport,
   });
 
+  // chatRefを更新
+  chatRef.current = chat;
+
   useEffect(() => {
+    // idがない場合（新規スレッド）は履歴取得をスキップ
     if (!id) return;
 
-    // スレッドIDが変更されたときにメッセージ履歴を取得して表示する
-    // assistant-uiはデフォルトでは履歴の自動取得を行わないため、ここで手動で取得して設定する
+    // 同じスレッドIDの場合は履歴取得をスキップ（会話中の再実行を防ぐ）
+    if (prevIdRef.current === id) return;
+
+    // スレッドIDが変更された場合のみ履歴を取得
+    prevIdRef.current = id;
+
     const fetchMessages = async () => {
       try {
         const data = await upFetch(`/memory/threads/${id}/messages`, {
@@ -207,8 +220,8 @@ function RuntimeHook() {
           params: { agentId: AGENT_ID },
           credentials: "include",
         });
-        if (data?.uiMessages) {
-          chat.setMessages(data.uiMessages);
+        if (data?.uiMessages && chatRef.current) {
+          chatRef.current.setMessages(data.uiMessages);
         }
       } catch (error) {
         // 404は新規スレッドの場合などで発生する可能性があるため、エラーログを出さない
@@ -221,7 +234,7 @@ function RuntimeHook() {
     };
 
     fetchMessages();
-  }, [id, chat]);
+  }, [id]); // 依存配列からchatを削除し、idのみに依存
 
   const runtime = useAISDKRuntime(chat);
 
